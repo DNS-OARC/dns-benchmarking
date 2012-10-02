@@ -1,0 +1,1576 @@
+# Helper APIs for writing test cases
+if [ -z "$LOG" ]; then
+        echo "Not running in test environment, exitting."
+        exit 1
+fi
+
+# Global return code
+export TIMEOUT=300
+export RCODE=0
+_rc() {
+        if [ $# -eq 1 ]; then
+                (( RCODE |= $1 ))
+        fi
+        return $RCODE
+}
+_rc_init() {
+        RCODE=0
+}
+
+export EVSTR="OK"
+_ev() {
+	$*
+	ret=$?
+	if [ $ret -eq 0 ]; then EVSTR="OK"; else EVSTR="FAILED"; fi
+	return $ret
+}
+
+# Trap faults
+set +m
+trap _notrap SIGSEGV
+trap _notrap SIGABRT
+_notrap() {
+        sleep 0.1
+}
+
+# Random string
+_rnd_str() {
+        tr -dc a-z0-9 < /dev/urandom|head -c $1
+}
+
+# Select N from M where N<=M
+_arr_selection() {
+        local invP=4 # 1/4 chance not to be selected (for granularity when using integers)
+        for c in $*; do
+                (( RANDOM % $invP )) && echo $c;
+        done
+}
+
+# Run as user
+_run_as() {
+        user=$1
+        shift 1
+        sudo -u $user $* &>>$LOG
+        return $?
+}
+
+# Prefix
+export KNOTC=$(which knotc)
+export KNOT_BIN="$(which knotd)"
+export KNOT_PREFIX="valgrind --leak-check=full"
+export NAMED_BIN="/usr/sbin/named"
+export RNDC_BIN="/usr/sbin/rndc"
+_knot_prefix() {
+        if [ $# -ge 1 ]; then
+                KNOT_PREFIX=$1
+        else
+                echo $KNOT_PREFIX
+        fi
+}
+_knotd_bin() {
+        if [ $# -ge 1 ]; then
+                KNOT_BIN=$1
+        else
+                echo $KNOT_BIN
+        fi
+
+}
+
+# Support (DDNS)
+echo -e "system {storage \"/tmp\";}\nremotes{b{address 1.2.3.4;}} zones{a{file \"tmp.zone\";update-in b;}}" > /tmp/conf.tmp
+$KNOTC -c /tmp/conf.tmp checkconf &>/dev/null
+export KNOT_SUPPORT_DDNS=$?
+rm /tmp/conf.tmp
+
+# Verbosity
+export VERBOSE=0
+_verbose() {
+        if [ $# -eq 1 ]; then
+                VERBOSE=$1
+        fi
+        return $(( ! $VERBOSE ))
+}
+
+# Enter directory
+_enter() {
+        pushd $(pwd) &>/dev/null 
+        cd $1
+}
+
+# Leave directory 
+_leave() {
+        popd &>/dev/null
+}
+
+# Watch logfile for a match
+_watch() {
+        proc="$1"
+	nproc="$2"
+        cb="$3"
+        fn="$4"
+        match="$5"
+        limit="$6"
+        fromline="$7"
+        do_run=1
+        ctr=0
+        ret=0
+        while [ $do_run -eq 1 ]; do
+                sleep 0.2 # *5 modifier to limit
+		if [ "$proc" != "-" ]; then
+                	kill -0 $proc &>/dev/null
+                	if [ $? -ne 0 ]; then
+                        	do_run=0
+                        	ret=1
+                	fi
+		fi
+		if [ "$nproc" != "-" ]; then
+                	kill -0 $nproc &>/dev/null
+                	if [ $? -ne 0 ]; then
+                        	do_run=0
+                        	ret=1
+                	fi
+                fi
+                if [ -z $fromline ]; then
+                        mlines=$(grep -c -E "$match" "$fn")
+                else
+                        mlines=$(tail -n +$fromline $fn|grep -c -E "$match")
+                fi
+                if [ $mlines -ge 1 ]; then
+                        if [ "$cb" != "-" ]; then
+                                $cb
+                        fi
+                        do_run=0
+                fi
+                if [ $do_run -ne 0 ] && [ "$limit" != "" ]; then
+                        (( ctr += 1 ))
+                        if [ $ctr -ge $(( $limit * 5 )) ]; then
+                                do_run=0
+                                ret=2
+                        fi
+                fi
+        done
+        return $ret
+}
+
+# Get address and port from the BIND config
+_named_iface() {
+        cfg="$1"
+        iface=$(cat "$cfg"|tr -d "[:space:]"| perl -wnl -e '/listen-onport([0-9]+){([^;]+)/; print "$2 $1";' 2>/dev/null)
+        if [ "$iface" == " " ]; then
+                return 1
+        fi
+
+        echo $iface
+        return 0
+}
+
+# Get address and port from the Knot DNS config
+_knot_iface() {
+        local iface=$(cat "$1"|tr -d "[:space:]"|perl -wnl -e '/interfaces{[\w]+{address([^;]+)/; print "$1";')
+        if [ -z "$iface" ]; then
+                return 1
+        fi
+
+        local retval=${iface/@/ }
+        if [ "$retval" == "$iface" ]; then
+                retval="$iface 53"
+        fi
+        echo $retval
+        return 0
+}
+
+# Get address and port from the NSD config
+_nsd_iface() {
+	local iface=$(grep -m 1 "ip-address:" $1|awk '{print $2}')
+	        if [ -z "$iface" ]; then
+                return 1
+        fi
+
+        local retval=${iface/@/ }
+        if [ "$retval" == "$iface" ]; then
+                retval="$iface 53"
+        fi
+        echo $retval
+        return 0
+}
+
+# Get storage path out of Knot DNS config
+_knot_storage() {
+        cfg="$1"
+        stor=$(cat "$cfg"|tr -d "[:space:]"| perl -wnl -e '/system{.*storage"([^"]+)/; print "$1";' 2>/dev/null)
+        if [ -z "$stor" ]; then
+                stor="$HOME/.knot"
+        fi
+
+        echo $stor
+        return 0
+}
+
+# Export dig extra
+export dig_ex=""
+_dig_flags() {
+	export dig_ex="$*"	
+}
+_dig_param() {
+        export dig_ex="$dig_ex $1"
+}
+
+_dig_filt() {
+        ret=0
+        if [ $# -ge 1 ]; then
+                export dig_filt="$1"
+        else
+                ${dig_filt}_stop
+                ret=$?
+                unset dig_filt
+        fi
+        return $ret
+}
+
+export DIG_DIFF_RULES=""
+_dig_diff_rules() {
+	DIG_DIFF_RULES=$1
+}
+
+_dig() {
+        flags=""
+	ret=0
+        if [ -z $dig_filt ]; then
+                dig $flags $dig_ex $* 2>&1
+		ret=$?
+        else
+                dig $flags $dig_ex $* &>.dig.tmp
+		ret=$?
+		cat .dig.tmp|$dig_filt
+		rm .dig.tmp
+        fi
+        return $ret
+}
+
+_dig_knot() {
+        knotcfg="$BASEDIR/knot.conf"
+        iface=( $(_knot_iface $knotcfg) )
+        _dig @${iface[0]} -p ${iface[1]} $*
+        return $?
+}
+
+_dig_both() {
+	knotcfg="$BASEDIR/$1"
+	namedcfg="$BASEDIR/$2"
+	shift 2
+	query=$*
+        tid="$(basename $0)"
+        tid="${tid%.sh}"
+        iface=( $(_named_iface $namedcfg) )
+        _dig @${iface[0]} -p ${iface[1]} $query|tee named.full.dig|digcmp.py|sort > named.dig
+        iface=( $(_knot_iface $knotcfg) )
+        _dig @${iface[0]} -p ${iface[1]} $query|tee knotd.full.dig|digcmp.py|sort > knotd.dig
+	if [ $(cat knotd.dig|wc -l) -eq 0 ] && ! grep -q "NOERROR" knotd.full.dig; then
+		_progress " * dig: no response for '$query' from knotd, FAILED"
+		return 1
+	fi
+
+	diff -u named.dig knotd.dig | grep -E "^(\+|\-)" > dig.diff.tmp
+	if [ "$DIG_DIFF_RULES" != "" ]; then
+		digcmp.py -r $DIG_DIFF_RULES dig.diff.tmp > dig.diff
+	else
+		cat dig.diff.tmp > dig.diff
+	fi
+
+	lw=$(cat dig.diff | grep -c "!WARNING")
+	l=$(cat dig.diff | grep -c -v "!WARNING")
+	if [ $l -ge 2 ]; then
+		l=$(( l - 2 )) # diff header
+	fi
+	rm dig.diff.tmp
+	if [ $lw -ne 0 ]; then
+		_progress " * dig: $lw differences for '$query' found (warning, non-fatal)"
+	fi
+	if [ $l -eq 0 ]; then
+		if [ $lw -eq 0 ]; then
+			_verbose && _progress " * dig: no differences for '$query' found, OK"
+		fi
+		return 0
+	else
+		_progress " * dig: $l differences for '$query' found"
+		return 1
+	fi
+}
+
+# Run dig from file to both servers
+export DIG_FULL_LOG=0
+_dig_both_file() {
+	echo 0 > .dig.both.ret
+	cat $3|while read cmd; do
+        	_verbose &&_progress " * dig: comparing response to '$cmd'"
+		_dig_both $1 $2 $cmd
+		ret=$?
+		if [ $ret -ne 0 ]; then
+			echo $ret > .dig.both.ret
+		fi
+        	# Compare
+        	echo "==== $3: $cmd ====" >> digs
+        	if [ -f dig.diff ]; then
+			 cat dig.diff | grep -E "^(\+|\-)" >> digs
+		fi
+		# If full logging requested
+		if [ $DIG_FULL_LOG -ne 0 ]; then
+			echo "==== $3: $cmd ====" >> dig-knotd.log
+			echo "==== $3: $cmd ====" >> dig-named.log
+			cat named.full.dig >> dig-named.log
+			cat knotd.full.dig >> dig-knotd.log
+		fi
+        	rm named.dig knotd.dig dig.diff &>/dev/null
+        done
+	ret=$(cat .dig.both.ret)
+	rm .dig.both.ret
+	return $ret
+}
+
+# Fetch many zones and compare
+_dig_fetch_many() {
+	local ret=0
+	local knotcf=$1
+	local namedcf=$2
+	local tsig_filt=0
+	shift 2
+	# Set up TSIG filter if not having any
+	if [ -z $dig_filt ] && [ ${#_TSIGS[*]} -gt 0 ]; then
+		_dig_filt _tsig_filter
+		tsig_filt=1
+	fi
+        for z in $*; do
+		echo "==== dig: AXFR $z ====" >> digs
+                _dig_both $knotcf $namedcf "AXFR $z"
+		if [ $? -ne 0 ]; then	
+			(( ret |= 1 ))
+		fi
+		if [ -f dig.diff ]; then
+		cat dig.diff | grep -E "^(\+|\-)" >> digs; rm dig.diff
+		fi
+        done
+	# Strip filter
+	if [ $tsig_filt -gt 0 ]; then
+		_dig_filt;
+		(( ret |= $? ));
+	fi
+        if [ $ret -eq 0 ]; then
+                _verbose && _progress " * dig: no differences found, OK"
+        fi
+	_rc $ret
+	return $ret
+}
+
+# Stop process
+_stop_pid() {
+	local quiet=0
+	[ "$3" == "quiet" ] && quiet=1
+
+	# Attempt to kill
+	sleep 1
+	if ! kill $1 &>>$LOG; then
+		_progress " * couldn't stop PID=$1, process not running"
+		return 1
+	fi
+	# Wait for $TIMEOUT seconds for grace quit
+	local _TIMEOUT=20
+	if [ $# -ge 2 ]; then _TIMEOUT=$2; fi
+	local slept=0
+	while kill -0 $1 &>/dev/null; do
+		sleep 1	
+		(( slept += 1 ))
+		if [ $slept -ge $_TIMEOUT ]; then
+			pn=$(ps --no-header -o command $1)
+			[ $quiet -eq 0 ] && _progress " * wait: process '$pn' didn't finish in ${_TIMEOUT}s, killing"
+			kill -9 $1 2>>$LOG 
+			wait $1 &>/dev/null
+			_verbose && _progress " * sleeping 30s to let OS free bound sockets"
+			sleep 30
+			return 1
+		fi
+	done
+	wait $1 &>/dev/null
+}
+
+# Get zone path
+_zpath() {
+	bname=$(echo $*|tr "/" "_")
+	if [ "$bname" == "." ]; then
+		bname="root"
+	fi
+	echo "$BASEDIR/zones/$bname.zone"
+}
+
+# Generate zone names
+_generate_names() {
+	echo $(zone-generate.py -n $1)
+}
+
+# Generate zone
+_generate_zone() {
+	if [ ! -d $BASEDIR/zones ]; then
+		mkdir -p $BASEDIR/zones &>>$LOG
+	fi
+	params=""
+	if [ "$1" == "-t" ]; then
+		params="$1 $2"
+		shift 2
+	fi
+	_verbose && _progress " * zones: generating '$1' with ~$2 RRs"
+	zone-generate.py $params $1 $2 > $(_zpath $1)
+}
+
+# Check if zone is signed
+_zone_signed() {
+	local dnskey_count=$(grep -c -E "([0-9]+)([^a-zA-Z]*)DNSKEY" $(_zpath $1) )
+	if [ $dnskey_count -lt 2 ]; then
+		return 1
+	fi	
+	return 0
+}
+
+# Update zone SOA
+_update_soa() {
+	zone=$1;
+	zpath=$zone
+	if [ ${zpath:0:1} != "/" ]; then
+		zpath=$(_zpath $zone)
+	fi
+        soa=$(head $zpath|tr -d "\n\r"|grep -o -E "*SOA.*$"|tr -d "()"|awk '{print $4}')
+        printf "%d" $soa &>/dev/null
+        if [ $? -ne 0 ]; then
+                _progress " * zones: couldn't find SOA serial in '$zone', updated failed"
+                return $?
+        fi
+        sed -i "s/$soa/$(( soa + 1 ))/g" $zpath
+	local ret=$?
+	touch $zpath
+	return $ret
+}
+
+# Generate zone update
+_generate_zone_update() {
+	origin=$1
+	zone=$2
+	rrs=$3
+	_verbose && _progress " * zones: updating '$origin' with ~$rrs RRs"
+	if _zone_signed $origin; then
+		_sign_zone $origin
+	else
+		zone-generate.py -u $zone $origin $rrs
+	fi
+	_update_soa $origin
+	return $?
+}
+
+# Clear all zones
+_clear_zones() {
+	rm -rf $BASEDIR/zones &>>$LOG; mkdir $BASEDIR/zones &>>$LOG
+	return $?
+}
+
+# Set default zone size
+export _ZONES_SIGNED=3
+export _ZONES_FLOOR=100
+export _ZONES_CEIL=1900
+_generate_zones_size() {
+	if [ $# -eq 2 ]; then
+		_ZONES_FLOOR=$1
+		_ZONES_CEIL=$(( $2 - $1 ))
+	else
+		echo $(( RANDOM % _ZONES_CEIL + _ZONES_FLOOR ))
+	fi
+}
+
+# Generate zones
+_generate_zones() {
+	_clear_zones
+	local i=0;local c=0;local nc=0;local nsc=0;
+	for z in $*; do
+		rr_count=$(_generate_zones_size)
+		_generate_zone $z $rr_count
+		if (( $RANDOM % _ZONES_SIGNED == 1 )); then 
+                	local ar=""
+                	if (( RANDOM % 2 == 0 )); then
+				ar="-3"
+				(( nsc += 1 ))
+			else
+				(( nc += 1 ))
+			fi
+			_sign_zone "$z" "$ar"
+		else
+			(( c += 1 ))
+		fi
+		(( i += 1 ))
+	done
+	_verbose && _progress " * zones: generated $c unsigned zones, $nc NSEC zones, $nsc NSEC3 zones"
+}
+
+# Generate zones update
+_generate_zones_update() {
+	local ret=0
+	for z in $*; do
+		rr_count=$(( $(_generate_zones_size)  / 10 ))
+		_generate_zone_update $z $(_zpath $z) $rr_count
+		(( ret |= $? ))
+	done
+	return $ret
+}
+
+# Use TSIG
+_TSIGS=()
+_tsig_use() {
+	_TSIGS[${#_TSIGS[*]}]="$1:$2:$3"
+}
+
+# Evaluate TSIG test
+_tsig_test_axfr_eval() {
+	local res=$([ $1 -eq 0 ] && echo "OK, refused" || echo "FAILED, transfer successful")
+	_progress "$2 $res"
+	return $1
+}
+
+# Test TSIG
+_tsig_test_axfr() {
+        # Attempt to AXFR with NO key
+	local zone=$1
+	local key=$2
+	local secret=$3
+	local ret=0
+        _dig_knot AXFR $zone 1>/dev/null 2>>$LOG
+        _tsig_test_axfr_eval $? " * knotd: AXFR of '$zone' with NO key?"
+	(( ret |= $? ))
+        # Attempt to AXFR with invalid key
+        _dig_knot -y "$key:invalidsecret" AXFR $zone 1>/dev/null 2>>$LOG
+        _tsig_test_axfr_eval $? " * knotd: AXFR of '$zone' with INVALID secret?"
+	(( ret |= $? ))
+        #  Attempt to AXFR with invalid key name
+         _dig_knot -y "invalidkey:$secret" AXFR $zone 1>/dev/null 2>>$LOG
+        _tsig_test_axfr_eval $? " * knotd: AXFR of '$zone' with INVALID key name?"
+	(( ret |= $? ))
+	return $ret
+}
+
+# TSIG filter for dig
+_tsig_filter() {
+        cat > dig.ftsig.tmp
+	tsigs=$(cat dig.ftsig.tmp|grep -c "TSIG")
+        msgs=$(( $(cat dig.ftsig.tmp|grep "XFR size:"|awk '{print $7}'|tr -d ',') + 0 ))
+	if (( tsigs == 0 )) || (( (msgs/100) > tsigs )); then
+		_progress " * dig: more than 100 messages between TSIG RRs, FAILED"
+		echo -n > dig.ftsig
+        fi
+        grep -iv "TSIG" < dig.ftsig.tmp
+}
+_tsig_filter_stop() {
+	rm dig.ftsig.tmp
+	if [ -f dig.ftsig ]; then
+		rm dig.ftsig
+		return 1
+	else
+		_verbose && _progress " * dig: filter 'tsig_filter' finished, OK"
+	fi
+	return 0
+}
+
+# Generate config base
+export CFG_NSID="deadbeef"
+export CFG_NSID_HEX=$(echo "print '$CFG_NSID'.encode('hex')"|python)
+export CONF_TYPE=""
+export CONF_BASE=""
+export REMOTE_LIST=()
+export IFACE_LIST=()
+export ZONE_LIST=()
+export ZONE_ATTRS=""
+_cfg_base() {
+	CONF_TYPE="$1"
+	CONF_BASE=""
+	REMOTE_LIST=()
+	IFACE_LIST=()
+	ZONE_LIST=()
+	ZONE_ATTRS=""
+	if [ $CONF_TYPE == "knot" ]; then
+		CONF_BASE="system {\nstorage \"$BASEDIR/.wd/$2\";\nnsid \"$CFG_NSID\";\n}\n"
+		CONF_BASE="$CONF_BASE\nlog {\nstdout { any all; }\nstderr {}\nsyslog {}\n}\n"
+		if [ ${#_TSIGS[*]} -gt 0 ]; then
+		CONF_BASE="$CONF_BASE\nkeys {\n"
+		for t in ${_TSIGS[*]}; do
+			key=( $(echo $t|tr ":" " ") )
+			CONF_BASE="${CONF_BASE}\t${key[0]} ${key[1]} \"${key[2]}\";\n"
+		done
+		CONF_BASE="${CONF_BASE}}\n"
+		fi
+	elif [ $CONF_TYPE == "bind" ]; then	
+		for t in ${_TSIGS[*]}; do
+			key=( $(echo $t|tr ":" " ") )
+			CONF_BASE="${CONF_BASE}key \"${key[0]}\" {\n\talgorithm \"${key[1]}\";\n\tsecret \"${key[2]}\";\n};\n\n"
+		done
+		CONF_BASE="${CONF_BASE}options {\n\tdirectory \"$BASEDIR\";\n\tpid-file \"$BASEDIR/named-slave.pid\";";
+		CONF_BASE="$CONF_BASE\n\tkey-directory \"$BASEDIR\";\n\tauth-nxdomain no;\n\trecursion no;";
+		CONF_BASE="$CONF_BASE\n\tserver-id \"$CFG_NSID\";";
+	elif [ $CONF_TYPE == "nsd" ]; then
+		for t in ${_TSIGS[*]}; do
+			key=( $(echo $t|tr ":" " ") )
+			CONF_BASE="${CONF_BASE}key:\n\tname: ${key[0]}\n\talgorithm: ${key[1]}\n\tsecret: \"${key[2]}\"\n\n"
+		done
+		CONF_BASE="${CONF_BASE}server:\n\tdatabase: \"$BASEDIR/.wd/$2/nsd.db\"\n\tpidfile: \"$BASEDIR/.wd/$2/nsd.pid\"\n\t"
+		CONF_BASE="${CONF_BASE}username: $OWNER\n\tlogfile: \"$BASEDIR/nsd.log\"\n\tzonesdir: \"$BASEDIR/zones\"\n\t"
+		CONF_BASE="${CONF_BASE}nsid: $CFG_NSID_HEX\n"
+	fi
+	
+}
+
+# Add iface
+_cfg_iface_add() { 
+	name=$1
+	addr=$2
+	arr=( $(echo "$addr"|tr "@" " ") )
+	# Knot
+	if [ $CONF_TYPE == "knot" ]; then
+		IFACE_LIST[${#IFACE_LIST[*]}]="$name { address $addr; }\n"
+	elif [ $CONF_TYPE == "bind" ]; then
+		# BIND	
+		port=""
+		if [ ! -z ${arr[1]} ]; then 
+			port="port ${arr[1]}"
+		fi
+		IFACE_LIST[${#IFACE_LIST[*]}]="\tlisten-on $port { ${arr[0]}; };\n"
+	elif [ $CONF_TYPE == "nsd" ]; then
+		IFACE_LIST[${#IFACE_LIST[*]}]="\tip-address: $addr\n"
+	fi
+}
+_cfg_iface_gen() {
+	if [ $CONF_TYPE == "knot" ]; then
+		CONF_BASE="$CONF_BASE\ninterfaces {\n${IFACE_LIST[*]}\n}\n"
+	elif [ $CONF_TYPE == "bind" ]; then
+		CONF_BASE="$CONF_BASE\n${IFACE_LIST[*]}};\n"
+	elif [ $CONF_TYPE == "nsd" ]; then
+		CONF_BASE="$CONF_BASE\n${IFACE_LIST[*]}\n"
+	fi
+}
+
+# Add remote
+_cfg_rem_add() {
+        name=$1
+        addr=$2
+	key=""
+	if [ ${#_TSIGS[*]} -gt 0 ]; then
+		key_id=$(( ${#REMOTE_LIST[*]} % ${#_TSIGS[*]} ))
+		k=( $(echo ${_TSIGS[$key_id]}|tr ":" " ") )
+		key="key ${k[0]};"
+	fi
+        REMOTE_LIST[${#REMOTE_LIST[*]}]="$name { address $addr; $key}\n"
+}
+_cfg_rem_gen() {
+	CONF_BASE="$CONF_BASE\nremotes {\n${REMOTE_LIST[*]}\n}\n"
+}
+
+# Add zone
+_cfg_zone_attr_clear() {
+	ZONE_ATTRS=""
+}
+_cfg_zone_attr() {
+	ZONE_ATTRS="$ZONE_ATTRS\n\t$*"
+}
+_cfg_zone_add() {
+        name=$1
+        file=$2
+	if [ $CONF_TYPE == "knot" ]; then
+        	ZONE_LIST[${#ZONE_LIST[*]}]="$name {\n\tfile \"$file\";${ZONE_ATTRS[*]}\n}\n"
+	elif [ $CONF_TYPE == "bind" ]; then
+        	ZONE_LIST[${#ZONE_LIST[*]}]="zone \"$name\" {\n\tfile \"$file\";${ZONE_ATTRS[*]}\n};\n\n"
+	elif [ $CONF_TYPE == "nsd" ]; then
+		ZONE_LIST[${#ZONE_LIST[*]}]="zone:\n\tname: $name\n\tzonefile: \"$file\"${ZONE_ATTRS[*]}\n"
+	fi
+}
+_cfg_zone_gen() {
+	if [ $CONF_TYPE == "knot" ]; then
+        	CONF_BASE="$CONF_BASE\nzones {\n\tsemantic-checks on;\n${ZONE_LIST[*]}\n}\n"
+	elif [ $CONF_TYPE == "bind" ]; then
+		CONF_BASE="$CONF_BASE\n${ZONE_LIST[*]}";
+	elif [ $CONF_TYPE == "nsd" ]; then
+		CONF_BASE="$CONF_BASE\n${ZONE_LIST[*]}";
+	fi
+}
+
+# Generate config
+_cfg_gen() {
+	echo -e $CONF_BASE
+	if [ $CONF_TYPE == "bind" ]; then
+		local secret="bWFzdGVyY2hpZWYK";
+		echo -e "controls {"
+        	echo -e "\tinet 127.0.0.1 port 52999 allow { 127.0.0.1; } keys { rndc-key; };"
+		echo -e "};";
+		echo -e "include \"$BASEDIR/rndc.key\";";
+		echo -e "key \"rndc-key\" {\n\talgorithm hmac-md5;\n\tsecret \"${secret}\";\n};" > $BASEDIR/rndc.key
+	fi
+}
+
+# Generate slave config
+_cfg_gen_slave() {
+	id="slave-$RANDOM"
+	_cfg_base knot "$id"
+	_cfg_iface_add lo0 127.0.0.1@53551
+	_cfg_iface_gen
+	_cfg_rem_add all "0.0.0.0/0"
+	_cfg_rem_add master 127.0.0.1@53531
+	_cfg_rem_gen
+	_cfg_zone_attr "xfr-out all;"
+	_cfg_zone_attr "xfr-in master;"
+	_cfg_zone_attr "notify-in all;"
+	for z in $*; do
+		_cfg_zone_add "$z" "$(_zpath $z).slave"
+	done
+	_cfg_zone_gen
+	_cfg_gen
+	mkdir -p $BASEDIR/.wd/$id &>>$LOG
+}
+
+# Generate BIND slave config
+_cfg_gen_slave_named() {
+        id="slave-$RANDOM"
+        _cfg_base bind "$id"
+        _cfg_iface_add lo0 127.0.0.1@53551
+        _cfg_iface_gen
+        _cfg_zone_attr "type slave;"
+	if [ ${#_TSIGS[0]} -gt 0 ]; then
+		k=( $(echo ${_TSIGS[0]}|tr ":" " ") ); key="key ${k[0]}"
+                _cfg_zone_attr "transfer-source 127.0.0.1 port 53551;"
+                _cfg_zone_attr "allow-transfer { key ${k[0]}; };"
+	else
+		key=""
+	fi
+        _cfg_zone_attr "masters {127.0.0.1 port 53531 $key;};"
+        for z in $*; do
+		_cfg_zone_add "$z" "$(_zpath $z).slave"
+        done
+        _cfg_zone_gen
+        _cfg_gen
+}
+
+# Generate NSD slave config
+_cfg_gen_slave_nsd() {
+	id="slave-$RANDOM"
+        _cfg_base nsd "$id"
+        _cfg_iface_add lo0 127.0.0.1@53551
+        _cfg_iface_gen
+	if [ ${#_TSIGS[0]} -gt 0 ]; then
+		k=( $(echo ${_TSIGS[0]}|tr ":" " ") ); key="key ${k[0]}"
+		_cfg_zone_attr "provide-xfr: 0.0.0.0/0 $key"
+		_cfg_zone_attr "provide-xfr: 0.0.0.0/0 NOKEY"
+        	_cfg_zone_attr "request-xfr: 127.0.0.1@53531 $key"
+                _cfg_zone_attr "outgoing-interface: 127.0.0.1@53551"
+	else
+		_cfg_zone_attr "provide-xfr: 0.0.0.0/0 NOKEY"
+        	_cfg_zone_attr "request-xfr: 127.0.0.1@53531"
+	fi
+        _cfg_zone_attr "allow-notify: 0.0.0.0/0 NOKEY"
+        for z in $*; do
+		_cfg_zone_add "$z" "$(_zpath $z).slave"
+        done
+        _cfg_zone_gen
+        _cfg_gen
+        mkdir -p $BASEDIR/.wd/$id &>>$LOG
+}
+
+# Generate BIND transit config (slave -> master)
+export TRANSIT_PORT=53531
+_cfg_gen_transit_named() {
+        id="transit-$RANDOM"
+        _cfg_base bind "$id"
+        _cfg_iface_add lo0 127.0.0.1@${TRANSIT_PORT}
+        _cfg_iface_gen
+        _cfg_zone_attr "type slave;"
+	if [ ${#_TSIGS[0]} -gt 0 ]; then
+		k=( $(echo ${_TSIGS[0]}|tr ":" " ") ); key="key ${k[0]}"
+                _cfg_zone_attr "transfer-source 127.0.0.1 port ${TRANSIT_PORT};"
+		_cfg_zone_attr "allow-transfer { key ${k[0]}; };"
+        else
+                key=""
+        fi
+        _cfg_zone_attr "masters {127.0.0.1 port 53551 $key;};"
+        for z in $*; do
+		_cfg_zone_add "$z" $(_zpath $z)
+        done
+        _cfg_zone_gen
+        _cfg_gen
+}
+
+# Generate NSD transit config (slave -> master)
+_cfg_gen_transit_nsd() {
+        id="transit-$RANDOM"
+        _cfg_base nsd "$id"
+        _cfg_iface_add lo0 127.0.0.1@${TRANSIT_PORT}
+        _cfg_iface_gen
+        if [ ${#_TSIGS[0]} -gt 0 ]; then
+                k=( $(echo ${_TSIGS[0]}|tr ":" " ") ); key="key ${k[0]}"
+                _cfg_zone_attr "provide-xfr: 0.0.0.0/0 $key"
+                _cfg_zone_attr "request-xfr: 127.0.0.1@53551 $key"
+		_cfg_zone_attr "outgoing-interface: 127.0.0.1@${TRANSIT_PORT}"
+        else
+                _cfg_zone_attr "provide-xfr: 0.0.0.0/0 NOKEY"
+                _cfg_zone_attr "request-xfr: 127.0.0.1@53551"
+        fi
+        _cfg_zone_attr "allow-notify: 0.0.0.0/0 NOKEY"
+        for z in $*; do
+		_cfg_zone_add "$z" $(_zpath $z)
+        done
+        _cfg_zone_gen
+        _cfg_gen
+        mkdir -p $BASEDIR/.wd/$id &>>$LOG
+}
+
+# Generate master config
+_cfg_gen_master() {
+        id="master-$RANDOM"
+        _cfg_base knot "$id"
+        _cfg_iface_add lo0 127.0.0.1@53531
+        _cfg_iface_gen
+        _cfg_rem_add all "0.0.0.0/0"
+        _cfg_rem_add slave 127.0.0.1@53551
+        _cfg_rem_gen
+        _cfg_zone_attr "xfr-out all;"
+        _cfg_zone_attr "notify-out slave;"
+        _cfg_zone_attr "ixfr-from-differences on;"
+if [ $KNOT_SUPPORT_DDNS -eq 0 ]; then
+	_cfg_zone_attr "update-in all;"
+fi
+        for z in $*; do
+		_cfg_zone_add "$z" $(_zpath $z)
+        done
+        _cfg_zone_gen
+        _cfg_gen
+	mkdir -p $BASEDIR/.wd/$id &>>$LOG
+}
+
+# Generate BIND master config
+_cfg_gen_master_named() {
+	id="master-$RANDOM"
+        _cfg_base bind "$id"
+        _cfg_iface_add lo0 127.0.0.1@53531
+        _cfg_iface_gen
+        _cfg_zone_attr "type master;"
+	_cfg_zone_attr "notify explicit;"
+	_cfg_zone_attr "also-notify {127.0.0.1 port 53551; };"
+	if [ ${#_TSIGS[*]} -gt 0 ]; then
+		for t in ${_TSIGS[*]}; do
+			key=( $(echo $t|tr ":" " ") )
+			_cfg_zone_attr "allow-transfer { key ${key[0]}; };"
+			_cfg_zone_attr "allow-query { key ${key[0]}; };"
+		done
+	else
+        	_cfg_zone_attr "allow-transfer { 0.0.0.0/0; };" 
+	fi
+	_cfg_zone_attr "ixfr-from-differences yes;"
+        for z in $*; do
+		_cfg_zone_add "$z" $(_zpath $z)
+        done
+        _cfg_zone_gen
+        _cfg_gen
+}
+
+# Generate NSD master config
+_cfg_gen_master_nsd() {
+	id="master-$RANDOM"
+	_cfg_base nsd "$id"
+	_cfg_iface_add lo0 127.0.0.1@53531
+	_cfg_iface_gen
+	_cfg_zone_attr "notify: 127.0.0.1@53551 NOKEY"
+	if [ ${#_TSIGS[*]} -gt 0 ]; then
+		for t in ${_TSIGS[*]}; do
+			key=( $(echo $t|tr ":" " ") )
+			_cfg_zone_attr "provide-xfr: 0.0.0.0/0 ${key[0]}"
+		done
+	else
+		_cfg_zone_attr "provide-xfr: 0.0.0.0/0 NOKEY"
+	fi
+	for z in $*; do
+		_cfg_zone_add "$z" $(_zpath $z)
+        done
+        _cfg_zone_gen
+        _cfg_gen
+	mkdir -p $BASEDIR/.wd/$id &>>$LOG
+}
+
+# Knot set leak check threshold
+# Some memory in external libraries may leak, they would get reported over and over
+# like http://sourceware.org/bugzilla/show_bug.cgi?id=2314 
+export MM_REACHABLE=32 # unfreed memory from dlsym(), not much we can do
+export MM_LOST=0
+_knotd_memcheck_limits() {
+	MM_REACHABLE=$1	
+	MM_LOST=$2
+}
+
+# Knot leak check
+_knotd_memcheck() {
+	local ret=0
+	errcount=$(grep -c -i -E "(Process terminating)|(Invalid (read|write))|(Assertion)" $1)
+	if [ $errcount -gt 0 ]; then
+		_progress " * memcheck: $errcount memory errors detected ($(basename $1))"
+		ret=1
+	fi
+	reachable=0
+	lost=$(grep "lost:" $1|awk '{print $4}'|(s=0;while read l; do l=$(echo $l|tr -d ","); (( s += l )); done;echo $s))
+	(( lost -= MM_LOST ))
+	if [ "$lost" != "" ]; then
+		lost=$(echo $lost|tr -d ",")
+		reachable=$(grep "reachable:" $1|awk '{print $4}'|tr -d ",")
+		(( reachable -= MM_REACHABLE ))
+		if [ $reachable -ne 0 ] || [ $lost -ne 0 ]; then	
+			_progress " * memcheck: ${lost} bytes lost, ${reachable} bytes reachable ($(basename $1))"
+		fi
+		if [ $lost -gt 0 ]; then ret=1; fi
+	else
+		lost=0
+	fi
+	if [ $errcount -eq 0 ] && [ $lost -eq 0 ] && [ $reachable -eq 0 ]; then
+		_verbose && _progress " * memcheck: OK"
+	fi
+	return $ret
+}
+
+# Knotd version
+_knotd_ver() {
+	knotd -V|awk '{print $4}'
+}
+
+# Knotd revision
+_knotd_rev() {
+	local knotd_rev=""
+	rpath=$(dirname $(which $KNOT_BIN))/..
+	if [ -d "$rpath/.git" ]; then
+        	_enter $rpath
+        	echo $(git log --pretty=format:'%h' -n 1)
+        	_leave
+		return 0
+	fi
+	return 1
+}
+
+# Compile zones for Knot
+_knotd_compile() {
+	echo "$KNOTC $($KNOTC -V)" &>zcompile.log
+	flags=""
+	if [ "$1" == "-f" ]; then
+		flags=$1
+		shift 1
+	fi
+	$KNOTC -c $1 $flags compile &>>zcompile.log &
+	knotc_pid=$!
+	tmout=$2; [ -z $tmout ] && tmout=300
+	tmout_orig=$tmout
+	ret=0; running=1
+	while [ $running -eq 1 ] && [ $tmout -gt 0 ]; do
+		sleep 1
+		if ! kill -0 $knotc_pid &>/dev/null; then
+			running=0
+		else
+			(( tmout -= 1 ))	
+		fi
+	done
+
+	if [ $running -eq 0 ] && [ $tmout -eq 0 ]; then
+		_progress " * knotc: timeout of ${tmout_orig}s exceeded while waiting for zones to compile"
+		killtree $knotc_pid 9 &>/dev/null
+		ret=1
+	fi
+
+	wait $knotc_pid &>/dev/null
+	if [ $? -ne 0 ] && [ $tmout -ne 0 ]; then
+		_progress " * knotc: 'knot-zcompile' probably crashed during compilation"
+		ret=1
+	fi
+	return $ret
+}
+
+# Start Knot server
+export KNOTD_PID=0
+export KNOTD_LL=0
+export KNOTD_MEMCHECK=1
+_knotd_start() {
+	ret=1
+	cname=$(basename $1)
+	cname=${cname%%.conf}
+	_verbose && _progress " * knotd: starting '$cname'"
+	oldpid=$(pidof valgrind.bin knotd|tr " " ",")
+	if [ ! -z $oldpid ]; then
+                _progress " * knotd: cannot start, already running as PID=$oldpid"
+                exit 1
+	fi
+	_knotd_compile $1 $2
+	if [ $? -ne 0 ]; then
+		_progress " * knotd: failed to compile zones, refusing to start"
+		return 1
+	fi
+	$(_knot_prefix) $KNOT_BIN -c $1 &>knotd.log &
+	knotdpid=$!
+	knotd_started() {
+        	_verbose && _progress " * knotd: started knotd-$(_knotd_ver) PID=$knotdpid"
+	}
+	sleep 1
+	_watch "$knotdpid" - knotd_started knotd.log "PID stored" $2
+	if [ $? -gt 0 ]; then
+		kill -9 $knotdpid &>/dev/null
+		tmstr=" "
+		if [ $# -ge 2 ]; then tmstr=" within $2 seconds"; fi
+        	_progress " * knotd: server couldn't start${tmstr}, FAILED"
+	else
+		KNOTD_LL=0
+		KNOTD_PID=$knotdpid
+		ret=0
+	fi
+	_rc $ret
+	return $ret
+}
+
+_knotd_stop() {
+	KNOTD_LL=0
+	local ret=1
+	if [ $KNOTD_PID -gt 0 ]; then
+		_stop_pid $KNOTD_PID 30
+		ret=$?
+		_verbose && _progress " * knotd: stopped PID=$KNOTD_PID"
+		KNOTD_PID=0
+		if [ $ret -ne 0 ]; then
+			_progress " * knotd: failed to stop, error code is $ret"
+			_progress " * knotd: last lines of 'knotd.log':"
+			tail -n 3 $BASEDIR/knotd.log|while read l; do
+				_progress $l
+			done
+		fi
+	else
+		_progress " * knotd: couldn't stop, process is not running"
+	fi
+
+	if [ $KNOTD_MEMCHECK -eq 1 ]; then
+		_knotd_memcheck "$BASEDIR/knotd.log"
+		(( ret += $? ))
+	fi
+	cat $BASEDIR/knotd.log|grep "\[EMPTY STASH\]"|cut -d\  -f 3-|uniq -c -w 16|while read l; do
+		ct=$(echo $l|cut -d\  -f1)
+		rest=$(echo $l|cut -d\  -f2-)
+		_progress " * knotd: ${ct}x ${rest}"
+	done
+
+	_rc $ret
+	return $ret
+}
+
+_knotd_reload() {
+	knotc -c $1 reload &>>$LOG
+	_watch "$KNOTD_PID" - - knotd.log "Configuration reloaded." $2
+	local ret=$?
+	if [ $ret -gt 0 ]; then
+		kill -9 $KNOTD_PID &>/dev/null
+                if [ $# -ge 2 ]; then tmstr=" within $2 seconds"; fi
+                _progress " * knotd: server couldn't reload${tmstr}, FAILED"
+	fi
+	_rc $ret
+	return $ret
+}
+	
+# BIND version
+_named_ver() {
+	named -V|head -n1|awk '{print $2}'
+}
+
+# Start BIND server
+export NAMED_PID=0
+export NAMED_LL=0
+_named_start() {
+	ret=1
+	cname=$(basename $1)
+	cname=${cname%%.conf}
+	_verbose && _progress " * named: starting '$cname'"
+	# Check if running
+	oldpid=$(pidof named)
+	if [ ! -z $oldpid ]; then
+		_progress " * named: cannot start, already running as PID=$oldpid"
+		exit 1
+	fi
+	$NAMED_BIN -c $1 -g &>named.log &
+	namedpid=$!
+	named_started() {
+        	_verbose && _progress " * named: started named-$(_named_ver) PID=$namedpid"
+	}
+	sleep 1
+	_watch "$namedpid" - named_started named.log "running" $2
+	if [ $? -gt 0 ]; then
+                kill -9 $namedpid &>/dev/null
+		tmstr=" "
+		if [ $# -ge 2 ]; then tmstr=" within $2 seconds"; fi
+        	_progress " * named: server couldn't start${tmstr}, FAILED"
+	else
+		KNOTD_LL=0
+		NAMED_PID=$namedpid
+		ret=0
+        fi
+	_rc $ret
+	return $ret
+}
+
+_named_stop() {
+	NAMED_LL=0
+	if [ $NAMED_PID -gt 0 ]; then
+		kill -0 $NAMED_PID &>/dev/null
+		if [ $? -eq 0 ]; then
+			# Enforce 10s as BIND is somehow buggy and refuses to quit sometimes
+			_stop_pid $NAMED_PID 10 quiet
+		fi
+		_verbose && _progress " * named: stopped PID=$NAMED_PID"
+		NAMED_PID=0
+	else
+		_progress " * named: couldn't stop, process is not running"
+	fi
+	return 0
+}
+
+_named_reload() {
+	kill -0 $NAMED_PID &>/dev/null
+	if [ $? -eq 0 ] && [ $NAMED_PID -gt 0 ]; then
+		$RNDC_BIN -s 127.0.0.1 -k $BASEDIR/rndc.key -p 52999 reload &>>$LOG
+	else
+		_progress " * named: couldn't reload, process is not running"
+	fi
+}
+
+_named_refresh() {
+	for z in $*; do
+		kill -0 $NAMED_PID &>/dev/null
+        	if [ $? -eq 0 ] && [ $NAMED_PID -gt 0 ]; then
+                	$RNDC_BIN -s 127.0.0.1 -k $BASEDIR/rndc.key -p 52999 refresh $z &>>$LOG
+        	else
+                	_progress " * named: couldn't refresh zone '$z', process is not running"
+        	fi
+	done
+	return $ret
+}
+
+_named_compile() {
+	return 0
+}
+
+# NSD operations
+export NSD_BIN=$(which nsd)
+export NSDC_BIN=$(which nsdc)
+export NSD_CONFIG=""
+_nsd_ver() {
+	$NSD_BIN -v 2>&1|head -n 1|awk '{print $3}'
+}
+
+_nsd_start() {
+	local ret=0
+	[ ! -f $BASEDIR/nsd.log ] && touch $BASEDIR/nsd.log
+	_nsd_compile $1
+	$NSDC_BIN -c $1 start &>>$LOG
+        _watch - - - nsd.log "nsd started" $2
+        if [ $? -gt 0 ]; then
+		ret=$?
+		$NSDC_BIN -c $1 stop &>>$LOG
+                tmstr=" "
+                if [ $# -ge 2 ]; then tmstr=" within $2 seconds"; fi
+                _progress " * nsd: server couldn't start${tmstr}, FAILED"
+        else
+		NSD_CONFIG=$1
+                ret=0
+        fi
+        _rc $ret
+        return $ret
+}
+
+_nsd_stop() {
+	if [ "$NSD_CONFIG" == "" ]; then
+		return 1
+	fi
+	$NSDC_BIN -c $NSD_CONFIG stop &>>$LOG
+	_watch - - - nsd.log "shutting down" $2
+	NSD_CONFIG=""
+	return $?	
+}
+
+_nsd_reload() {
+	$NSDC_BIN -c $1 restart &>>$LOG
+	_watch - - - nsd.log "nsd started" $2
+	return $?
+}
+
+_nsd_refresh() {
+	$NSDC_BIN -c $1 refresh &>>$LOG
+	return $?
+}
+
+_nsd_compile() {
+	$NSDC_BIN -c $1 rebuild &>>$LOG
+	return $?
+}
+
+# Quiet Knot operations output
+export _KNOTD_QUIET=1
+_knotd_quiet() {
+	if [ $# -ge 1 ]; then
+		if [ $1 -eq 1 ]; then _KNOTD_QUIET=0; else _KNOTD_QUIET=1; fi
+	fi
+	return $_KNOTD_QUIET
+}
+
+# Integrity check
+export KNOTD_IC=0
+_knotd_check_integrity() {
+        local ret=0
+	FROM_LL=$KNOTD_LL
+	_verbose && _progress " * knotd: performing integrity check #$KNOTD_IC"
+	use_sigusr=$(unittests-xfr --help|grep -c "SIGUSR1")
+	if [ $use_sigusr -gt 0 ]; then
+		kill -SIGUSR1 $KNOTD_PID &>/dev/null
+	else
+		kill -SIGCONT $KNOTD_PID &>/dev/null
+	fi
+        _watch "$KNOTD_PID" - - knotd.log "Integrity check $KNOTD_IC finished." $TIMEOUT $KNOTD_LL
+        if [ $? -eq 0 ]; then
+		tail -n +$FROM_LL knotd.log > ic.log
+		ierr=$(cat ic.log|grep "Integrity check:"|cut -d\  -f4)		
+		if [ "$ierr" == "" ]; then
+			_progress " * knotd: failed to find integrity check results"
+			(( KNOTD_IC += 1 ))
+			return 1
+		fi
+		if [ $ierr -gt 0 ] || _verbose; then
+			_progress " * knotd: integrity check finished with $ierr errors"
+		fi
+		err_line=$(grep -n "Starting integrity" ic.log|cut -d\: -f1)
+		do_print=1
+        	tail -n +$((err_line + 1)) ic.log|grep -v "SOA query"|while read l; do
+                        icres=$(echo $l|grep "Integrity check:")
+                        if [ "$icres" != "" ]; then
+                                do_print=0
+                        else
+                                [ $do_print -eq 1 ] && echo " * error: $l"
+                        fi
+        	done
+		(( KNOTD_IC += 1 ))
+        else
+        	_progress " * knotd: integrity check $KNOTD_IC failed finish within ${TIMEOUT}s"
+		ret=1
+        fi
+	# Do not update? 
+        #KNOTD_LL=$(( $KNOTD_LL + $chk_lc ))
+	return $ret
+
+}
+
+# AXFR wait 
+_knotd_wait_axfr() {
+	_verbose &&  _progress " * knotd: AXFR/IN of $# zones from master (timeout ${TIMEOUT}s)"
+	ret=1
+	xfered=0
+	for z in $*; do
+		npid=$NAMED_PID; [ "$npid" == "" ] && npid="-"
+		[ "$z" != "." ] && z="$z."
+        	_watch "$KNOTD_PID" "$npid" - knotd.log "(AXFR transfer of '$z/IN'|Incoming AXFR transfer of '$z') (.*) Finished." $TIMEOUT $KNOTD_LL
+        	if [ $? -eq 0 ]; then
+                	(( xfered += 1 ))
+		else
+			_verbose && _progress " * knotd: timeout exceeded while waiting for AXFR/IN of '$z'"
+        	fi
+	done
+	_verbose &&  _progress " * knotd: AXFR/IN of $xfered/$# zones finished"
+	KNOTD_LL=$(( $(wc -l knotd.log|cut -d\  -f1) + 1 ))
+	if [ $xfered -eq $# ]; then
+		ret=0
+	else
+		_progress " * knotd: timeout exceeded for AXFR/IN of $(( $# - $xfered ))/$# zones"
+	fi
+	_rc $ret
+	return $ret
+}
+
+# Wait for IXFR
+_knotd_wait_ixfr() {
+        _verbose &&  _progress " * knotd: waiting for IXFR/IN of $# zones"
+        ret=1
+        xfered=0
+	for z in $*; do
+		npid=$NAMED_PID; [ "$npid" == "" ] && npid="-"
+		[ "$z" != "." ] && z="$z."
+                _watch "$KNOTD_PID" "$npid" - knotd.log "(IXFR transfer of '$z/IN'|Incoming IXFR transfer of '$z') (.*) Finished." $TIMEOUT $KNOTD_LL
+                if [ $? -eq 0 ]; then
+                        (( xfered += 1 ))
+		else
+			_verbose && _progress " * knotd: timeout exceeded while waiting for IXFR/IN of '$z'"
+                fi
+        done
+	KNOTD_LL=$(( $(wc -l knotd.log|cut -d\  -f1) + 1 ))
+        _verbose &&  _progress " * knotd: IXFR/IN of $xfered/$# zones finished"
+        if [ $xfered -eq $# ]; then
+                ret=0
+        fi
+	_rc $ret
+        return $ret
+}
+
+# Wait for started XFR
+_knotd_wait_xfr_start() {
+	local ret=1
+        z=$1; [ "$z" != "." ] && z="$z."
+	npid=$NAMED_PID; [ "$npid" == "" ] && npid="-"
+        _watch "$KNOTD_PID" "$npid" - knotd.log "transfer of zone '$z/IN' (.*) Started." $TIMEOUT $KNOTD_LL
+        if [ $? -eq 0 ]; then
+                ret=0
+        fi
+        KNOTD_LL=$(( $(wc -l knotd.log|cut -d\  -f1) + 1 ))
+        return $ret
+}
+
+# Wait for failed XFR
+_knotd_wait_xfr_failed() {
+	local ret=1
+	z=$1; [ "$z" != "." ] && z="$z."
+	npid=$NAMED_PID; [ "$npid" == "" ] && npid="-"
+        _watch "$KNOTD_PID" "$npid" - knotd.log "(error:|\[error\]) ([AI]XFR transfer of '$z/IN'|Incoming [AI]XFR transfer of '$z') (.*): (.*)." $TIMEOUT $KNOTD_LL
+        if [ $? -eq 0 ]; then
+		ret=0
+	fi
+	KNOTD_LL=$(( $(wc -l knotd.log|cut -d\  -f1) + 1 ))
+	return $ret
+}
+
+# BIND wait for AXFR
+_named_wait_axfr() {
+        _verbose &&  _progress " * named: AXFR/IN of $# zones from master (timeout ${TIMEOUT}s)"
+        ret=1
+        xfered=0
+        for z in $*; do
+                npid=$KNOTD_PID; [ "$npid" == "" ] && npid="-"
+		 _watch "$NAMED_PID" "$npid" - named.log "'$z/IN' from ([^:]+): Transfer completed" $TIMEOUT $NAMED_LL
+                if [ $? -eq 0 ]; then
+                        (( xfered += 1 ))
+                else
+                        _verbose && _progress " * named: timeout exceeded while waiting for AXFR/IN of '$z'"
+                fi
+        done
+        _verbose &&  _progress " * named: AXFR/IN of $xfered/$# zones finished"
+        NAMED_LL=$(( $(wc -l named.log|cut -d\  -f1) + 1 ))
+        if [ $xfered -eq $# ]; then
+                ret=0
+        else
+                _progress " * named: timeout exceeded for AXFR/IN of $(( $# - $xfered ))/$# zones"
+        fi
+        _rc $ret
+        return $ret
+}
+
+# BIND wait for IXFR
+_named_wait_ixfr() {
+        _verbose && _progress " * named: waiting for IXFR/IN of $# zones"
+        ret=1
+        xfered=0
+        for z in $*; do
+		npid=$KNOTD_PID; [ "$npid" == "" ] && npid="-"
+                _watch "$NAMED_PID" "$npid" - named.log "'$z/IN' from ([^:]+): Transfer completed" $TIMEOUT $NAMED_LL
+                if [ $? -eq 0 ]; then
+                        _verbose && _progress " * named: finished IXFR/IN of '$z'"
+                        (( xfered += 1 ))
+                else
+                        _progress " * named: failed to IXFR/IN '$z'"
+                fi
+        done
+        _verbose && _progress " * named: IXFR/IN of $xfered/$# zones finished"
+        NAMED_LL=$(( $(wc -l named.log|cut -d\  -f1) + 1 ))
+        if [ $xfered -eq $# ]; then
+                ret=0
+        fi
+
+	# Perform TSIG tests if using TSIG
+	if [ $ret -eq 0 ] && [ ${#_TSIGS[*]} -gt 0 ]; then
+		k=( $(echo ${_TSIGS[0]}|tr ":" " ") );
+        	_tsig_test_axfr $1 ${k[0]} ${k[2]}
+                ret=$?
+	fi
+	
+	_rc $ret
+        return $ret
+}
+
+# BIND wait for reload
+_named_wait_reload() {
+        _verbose && _progress " * named: waiting for reload"
+        ret=1
+        _watch "$NAMED_PID" - - named.log "reloading configuration succeeded" $TIMEOUT $NAMED_LL
+        if [ $? -eq 0 ]; then
+        	_verbose && _progress " * named: finished reloading"
+		ret=0
+        else
+                _progress " * named: failed to wait for configuration reload"
+        fi
+        NAMED_LL=$(( $(wc -l named.log|cut -d\  -f1) + 1 ))
+        _verbose && _progress " * named: reload finished"
+
+        _rc $ret
+        return $ret
+}
+
+# Create zone signing keys
+_keygen() {
+	_enter $BASEDIR
+	local origin=$1; bname=$(echo $origin|tr "/" "_")
+	local params=$2;
+	if [ "${params}" != "" ]; then
+		if [ "${params:0:1}" != "-" ]; then
+			bname=$params
+			params=""
+		fi
+	fi
+	if [ "$3" != "" ]; then
+		bname="$3"
+	fi
+	echo "dnssec-keygen -r /dev/urandom $params -n ZONE $origin" >> $LOG
+        local key=$(dnssec-keygen -r /dev/urandom $params -n ZONE "$origin" 2>>$LOG)
+	mv "${key}.key" "zones/$bname.key"
+	mv "${key}.private" "zones/$bname.private"
+	echo "dnssec-keygen $params -f KSK -r /dev/urandom -n ZONE $origin" >> $LOG
+        key=$(dnssec-keygen $params -f KSK -r /dev/urandom -n ZONE "$origin" 2>>$LOG)
+	mv "${key}.key" "zones/$bname.ksk.key"
+	mv "${key}.private" "zones/$bname.ksk.private"
+	_leave
+}
+
+# Sign zone with NSEC/NSEC3
+_sign_zone() {
+	local altkey=""
+	if [ "$1" == "ALTKEY" ]; then
+		altkey=".alt"
+		shift 1
+	fi
+	_enter $BASEDIR/zones
+	local file=$(_zpath $1)
+	local origin=$1
+	local params=$2; local action="signing"
+	local bname=$(echo $origin|tr "/" "_")
+	local key=$BASEDIR/zones/${bname}${altkey}
+	local ksk=$BASEDIR/zones/${bname}${altkey}.ksk
+	if [ -f ${key}.key ] && _zone_signed $origin; then
+		if [ $(grep -c "NSEC3" $file) -gt 0 ]; then
+			params="-3"
+		else
+			params=""
+		fi
+		action="resigning"
+	else
+		_keygen $origin $params ${bname}${altkey}
+		cat ${key}.key >> $file
+		cat ${ksk}.key >> $file
+	fi
+	local nact="NSEC"	
+	if [ "$params" == "-3" ]; then
+		nact="NSEC3"
+		if [ -z $3 ]; then
+			params="$params deadbeef"
+		else
+			params="$params $3 $4 $5 $6 $7 $8"
+		fi
+	fi
+	_verbose && _progress " * zones: $action zone '$origin' with $nact"
+	# 4 years ~ 126144000 seconds
+        dnssec-signzone -u -i 126144000 -e +126144000 $params -k "${ksk}" -o "$origin" "$file" "${key}.key" &>>$LOG
+        mv ${file}.signed ${file} &>>$LOG
+	_leave
+}
+
+# Sign zones with random NSEC/NSEC3
+_sign_zones() {
+	for z in $*; do
+		args=""
+		(( RANDOM % 2 == 0 )) && args="-3"
+		_sign_zone $z $args
+	done
+}
+
+# Backup current test case output
+_test_save() {
+	name=$(basename $0); name=${name%%.sh}; 
+	_enter $BASEDIR
+        mkdir $name &>>$LOG
+        [ -f diffs ] && mv diffs ${name}/diffs
+        [ -f digs ] && mv digs ${name}/digs
+	mv *.log ${name}/ &>/dev/null
+	mv ${name}/progress.log $BASEDIR/ &>/dev/null
+	mv zones ${name}/ &>/dev/null
+	rm -rf zones &>/dev/null
+	mv *.conf ${name}/ &>/dev/null
+        rm *.out *.diff *.dig *.key *.pid &>/dev/null
+        cat $LOG > ${name}/logfile; echo -n > $LOG
+        _leave
+	return 0
+}
+
+# .pcat compare tool
+# (base, target)
+_pcat_cmp() {
+	adiff.py $1 $2
+}
+
+# traffic replay wrapper
+# (port, pcapfile)
+_replay() {
+	pcat -a "127.0.0.1" -p $1 "$2" &
+	pcat_pid=$!
+	finished=0
+	while [ $finished -eq 0 ]; do
+		sleep 1
+		kill -0 $pcat_pid &>/dev/null	
+		if [ $? -eq 0 ]; then
+			nc -vz 127.0.0.1 $1 &>/dev/null
+			if [ $? -ne 0 ]; then
+				kill $pcat_pid &>/dev/null
+				finished=1
+				echo "error: port $1 unreachable, process probably crashed" >&2
+			fi
+		else
+			finished=1
+		fi
+	done
+	wait $pcat_pid &>/dev/null
+	return $?
+}
+
+# analyze differences
+# (base, target)
+_pcat_cmp() {
+	local zn=${1%-*}
+	local bn=${1#*-}; bn=${bn%.pcat}
+	local tn=${2#*-}; tn=${tn%.pcat}
+	local lf="$3"
+	adiff.py $1 $2 > $lf
+	score=$(cat $lf|grep Different_replies|awk '{print $3'}) 
+	_progress " * $score different answers for '$tn' against '$bn' (zone '$zn')"
+	if [ ! -z $score ]; then
+		return 1
+	fi
+	return 0
+}
+
+# generate query mix in pcap format
+# ( domain )
+_pcap_gen() {
+	local zone=$1; shift 1; local ret=0; local bname=$(echo $zone|tr "/" "_")
+	zone-typelist.sh $zone $(_zpath $zone) > $BASEDIR/zones/$bname.tdb; ret=$?
+	[ $ret -gt 0 ] && _progress " * couldn't pick names from $zone.zone"
+	zone-pcapgen.py $* $zone $BASEDIR/zones/$bname.tdb
+	if [ $? -gt 0 ]; then
+		_progress " * couldn't generate query mix for '$zone'"
+		ret=1
+	fi
+	return $ret
+}
+
+# fuzz query mix
+_pcap_fuzz() {
+	pcap-fuzz.py $1
+	if [ $? -gt 0 ]; then
+		_progress " * failed to fuzz '$1'"
+		return 1
+	fi
+	return 0
+}
+

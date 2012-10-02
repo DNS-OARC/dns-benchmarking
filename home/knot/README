@@ -1,0 +1,43 @@
+Benchmarking
+------------
+It is required to have 
+ * zone (example.com.zone)
+ * trace (example.com.trace)
+ * dnsperf set (example.com.perf)
+ * appropriate IP/MAC in .trace and config
+
+Then run:
+ $ ./bench-graphs.sh example.com
+
+The "trace" test requires distel lab setup (not included).
+But it's basically there to just replay the traces and collect results.
+
+Useful tools are in the "tools" directory, see tools/README
+Compliance test cases are in the "cases" directory
+It may need to be in $PATH or have some other requirements f.e. pcat tool from ldns package.
+
+You can run them like:
+----------------------
+$ cd cases
+$ ./run.test 00unittests.sh
+$ # results will be located in /tmp/knot-run-test
+
+More info about rewriting traces:
+
+pcap file
+---------
+For the use with tcpreplay, MAC, IPv4 addresses and ports should be rewritten according to your testing network.
+$ tcprewrite --dlt=enet --enet-dmac=$dst_ether --enet-smac=$src_ether -i $out_pcap -o $out_pcap.tmp
+$ tcpprep --auto=client --cachefile=$out_pcap.cache --pcap=$out_pcap.tmp
+$ tcprewrite -C --portmap=$sport:$dport --endpoints=$dst_ip:$src_ip --cachefile=$out_pcap.cache -i $out_pcap.tmp -o $out_pcap
+
+dnsperf data set
+----------------
+Just use with the dnsperf tool like:
+$ dnsperf -s $dst_ip -p $dst_port -d $datafile -l $test_length
+
+zone file
+---------
+Full untrimmed zone can be downloaded from http://public.nic.cz/files/knot-dns/benchmark-zone.tar.gz
+Or you can generate it by yourself (including trace and dnsperf files) by using zone-generate.py and other tools.
+

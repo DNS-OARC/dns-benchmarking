@@ -1,0 +1,32 @@
+--- example.com.zone.6	2012-02-22 20:20:42.521540615 +0100
++++ example.com.zone.7	2012-02-22 20:21:04.937542606 +0100
+@@ -1,7 +1,7 @@
+ ; File written on Fri Feb 10 13:41:08 2012
+ ; dnssec_signzone version 9.7.3
+ example.com.		3600	IN SOA	ns.example.com. username.example.com. (
+-					2007120719 ; serial
++					2007120720 ; serial
+ 					10         ; refresh (10 seconds)
+ 					30         ; retry (30 seconds)
+ 					2419200    ; expire (4 weeks)
+@@ -654,19 +654,4 @@
+ 					24xAbU+4+TzD5Ier9xNYDNfLXUkJ9hKuBrvg
+ 					RDYN8W/rRN++aL4xR0o/jOwzVnkww/VtIkvK
+ 					7FPE0F2YpEw16H/ZIWnL6htRb5w= )
+-RSSD7AU1NQEBI2UF3B58G8JKBD0CDURF.example.com. 3600 IN NSEC3 1 0 10 AD3302FF S4A8QO8DEA53D05JQA0RE3H3R6UC7V1G
+-			3600	RRSIG	NSEC3 7 3 3600 20120311114108 (
+-					20120210114108 60914 example.com.
+-					sIaGgFypdpWWLFqcWGI0PzitwaIZI6irA8uw
+-					Y/E4etgI+l5aKbHPeum0+qzktYWc/wFxte44
+-					0T3dRujlVbMOhDAhE3QJFjZWEZo8ZZH7ARxC
+-					bn5pTkzmKjWqKjKhol2U0Y7ve74oJpi5H5o5
+-					D7nqiEmr1Ou8xkqbK281PGSti+s= )
+-S4A8QO8DEA53D05JQA0RE3H3R6UC7V1G.example.com. 3600 IN NSEC3 1 0 10 AD3302FF SH86DKIJAGTUEUO2F2PPQ0RJEFJCKGKS NS
+-			3600	RRSIG	NSEC3 7 3 3600 20120311114108 (
+-					20120210114108 60914 example.com.
+-					bDbE5EuKlVnpyavKronRh+FiK5wB0Ecw+ubc
+-					HiVRrQfJvnayxRVOiE0OvUrK0n0FyQwuXk6w
+-					/EysxVkcDK8wwX3SsXW71qEE1qG6GmFHUUOJ
+-					gksxkjkVTMug0Xnmm+UGO9va5VhekMJLiNzF
+-					Nl+vhTphDLLTgql8pyoA44PDARM= )
++

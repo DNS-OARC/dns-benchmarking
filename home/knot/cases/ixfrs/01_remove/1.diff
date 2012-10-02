@@ -1,0 +1,19 @@
+--- example.com.zone.1	2012-02-22 20:08:00.277504949 +0100
++++ example.com.zone.2	2012-02-22 20:08:32.477503336 +0100
+@@ -1,7 +1,7 @@
+ $TTL 1h                  ; The default expiration time of a resource record without its own TTL value
+ $ORIGIN example.com.
+ @  IN  SOA  ns.example.com. username.example.com. (
+-              2007120714 ; serial number of this zone file
++              2007120715 ; serial number of this zone file
+               10         ; slave refresh (1 day)
+               30         ; slave retry time in case of a problem (1 day)
+               4w         ; slave expiration time (4 weeks)
+@@ -39,7 +39,6 @@
+ ; using the sysdmin's box and the server
+                 SRV 1 0 9 sysadmins-box.example.com.
+                 SRV 1 0 9 server.example.com.
+-server           A   172.30.79.10
+ old-slow-box     A   172.30.79.11
+ sysadmins-box    A   172.30.79.12
+ new-fast-box     A   172.30.79.13

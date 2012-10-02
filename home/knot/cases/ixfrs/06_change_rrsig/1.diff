@@ -1,0 +1,20 @@
+--- example.com.zone.1	2012-02-22 20:14:47.801523517 +0100
++++ example.com.zone.2	2012-02-22 20:15:14.641526070 +0100
+@@ -1,14 +1,14 @@
+ ; File written on Mon Feb 13 21:58:29 2012
+ ; dnssec_signzone version 9.7.3
+ example.com.		3600	IN SOA	ns.example.com. username.example.com. (
+-					2007120714 ; serial
++					2007120715 ; serial
+ 					10         ; refresh (10 seconds)
+ 					30         ; retry (30 seconds)
+ 					2419200    ; expire (4 weeks)
+ 					3600       ; minimum (1 hour)
+ 					)
+-			3600	RRSIG	SOA 7 2 3600 20120314195829 (
+-					20120213195829 6905 example.com.
++			3600	RRSIG	SOA 7 2 3600 20120314195830 (
++					20120213195830 6905 example.com.
+ 					DQhnLO40fB9cgNyTdxAMgJU9l2BPUu6maAw5
+ 					7U1CxnML+6IhALQvrRpsOiasf6LH3W1HUIMd
+ 					scmGf67rX5kv5YM05vdkSR1rm02Nk7SP7aTg

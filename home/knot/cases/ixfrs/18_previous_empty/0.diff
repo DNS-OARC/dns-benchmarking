@@ -1,0 +1,18 @@
+--- example.com.zone	2012-08-16 16:35:27.734605615 +0200
++++ example.com.zone.1	2012-08-16 16:36:10.190607770 +0200
+@@ -1,7 +1,7 @@
+ $TTL 1h                  ; The default expiration time of a resource record without its own TTL value
+ $ORIGIN example.com.
+ @  IN  SOA  ns.example.com. username.example.com. (
+-              2007120713 ; serial number of this zone file
++              2007120714 ; serial number of this zone file
+               10         ; slave refresh (10 seconds)
+               30         ; slave retry time in case of a problem (30 seconds)
+               4w         ; slave expiration time (4 weeks)
+@@ -68,6 +68,5 @@
+ *.s	CNAME	s
+ s	A	10.1.1.1
+ prevtest1  MX 10 a.prevtest3.example.com.
+-prevtest2  A  2.3.4.5
+ b.prevtest3  A  3.4.5.6
+ prevtest4  A  4.5.6.7

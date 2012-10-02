@@ -1,0 +1,11 @@
+dnstester.cz.		1800	IN	SOA	a.ns.nic.cz. hostmaster.nic.cz. 1346371382 10800 3600 1209600 7200
+dnstester.cz.		1800	IN	NS	a.ns.nic.cz.
+dnstester.cz.		3600	IN	HINFO	"" ""
+dnstester.cz.		3600	IN	TXT	"x\012\001\y z"
+dnstester.cz.		3600	IN	TXT	"" ""
+dnstester.cz.		3600	IN	TXT	ahoj "" ""
+dnstester.cz.		3600	IN	TXT	"" ahoj \"\ \#
+dnstester.cz.		3600	IN	TXT	"\\"  "\""
+dnstester.cz.		3600	IN	TXT	"ahoj" "" "nevim"
+dnstester.cz.           3580    IN      NAPTR   20 0 "s" "SIP+D2U" "" sip._udp.dnstester.cz.
+

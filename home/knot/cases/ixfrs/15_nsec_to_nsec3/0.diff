@@ -1,0 +1,94 @@
+--- example.com.zone	2012-06-22 14:53:24.858594199 +0200
++++ example.com.zone.1	2012-06-22 15:38:16.046731127 +0200
+@@ -1,7 +1,7 @@
+ ; File written on Fri Jun 22 14:53:05 2012
+ ; dnssec_signzone version 9.9.0
+ example.com.		3600	IN SOA	ns.example.com. username.example.com. (
+-					2007120713 ; serial
++					2007120714 ; serial
+ 					10         ; refresh (10 seconds)
+ 					30         ; retry (30 seconds)
+ 					2419200    ; expire (4 weeks)
+@@ -51,44 +51,44 @@
+ 					GTJSHmDijto6KVIcjVxsJdNDhkLYiK+dVcte
+ 					a0iyRMXqe2wXY50rkoegX1R3UMAHvD6QqCGt
+ 					V50vXz0T+KrkNXto6WTefthuer0= )
+-			3600	DNSKEY	256 3 5 (
+-					AwEAAaGBXDqRbagd087AV00k8W7bc0BxckXL
+-					bWkTZqs0aA/wfbLaaRHYv6OMXmGZSaMVFBIY
+-					Sazve9E8UkjMRMjgT8G/BEtLr+03G17/Rdju
+-					qgA44A+uBJ5An8I0mWkfJ180mYbsftA3cVtz
+-					yJBnyikb/TLjM3GzlHslQHCvbWfig0Bd
+-					) ; ZSK; alg = RSASHA1; key id = 37485
+-			3600	DNSKEY	257 3 5 (
+-					AwEAAdQSCk880MBS4uRJ9fEGorx7JOVwIlWz
+-					EBqYK6A4ixi2SgruDfFl51esEGSYaSoh782F
+-					hpgzLt6aXSWzPGpJ4gUjskF3kAQav4+H/Vbh
+-					32xabMC0rrfHCJgvFCP2WsSWGm9JjLtiGpP1
+-					d9+h8IvU/orui5LRc/V3kQr/LfgsIfouljZw
+-					DgdUcfuRgJYT6lUXdWgAmSp4FXf3yz7iIjBq
+-					mJCcQnEKrXjdH+dpIuE7VI0TDplE97pAmDH0
+-					piDcGg/4QYSeHhb9NNEx/WcwSZDO1TBEJzxw
+-					gpx8vNpVRT7nsUCHCad+e6rkWJqTO8wBdE+l
+-					sx8jgRBaKG+k99nVFfc6OmE=
+-					) ; KSK; alg = RSASHA1; key id = 54766
+-			3600	RRSIG	DNSKEY 5 2 3600 (
+-					20120722115305 20120622115305 37485 example.com.
+-					khx27K3A1Qyh3WpFMIT5g+LZDUUJH0S6VqY3
+-					FnrQSZ2D4xjtfeNE/VeLy65AT/UPamxtsWJr
+-					PxQGwvGklzIxOiF/QeHhQcwpE1+fPzYCxgM9
+-					f4OF0K4jInENAz19pGhM77TMREWNcHW6sZWV
+-					f8yPqEVdJ2vgzfwLMNP1ZyczRQQ= )
+-			3600	RRSIG	DNSKEY 5 2 3600 (
+-					20120722115305 20120622115305 54766 example.com.
+-					O0YoVN1AI0+8GvxlFsHacF8O9HQwXijCAn49
+-					2AEabGcUl+zD/CLy0tX5ukR84YcLXtJJ218i
+-					z5ACZ9nkvX82hEb/dauItA7kvBPuTy6jLVu/
+-					0NEh6addL1FpULtJNBv0J5LqcvVH0M4HKkeX
+-					bLUUL3ZJC7LJA090Ukul8fzuXU7XCto45Xyu
+-					JYL0+SiDY2Hc1TuVuACIEWZN7i5DGd69ht5n
+-					v4D8mH4l5AwcAA2YgOZxZKPDe5JsExjGUekk
+-					zpZyAj6t5Sje9xUkYm/klM9RstF0kFguBnWI
+-					yXeNt8gIpVcNvSioikhVMXxrFnsKKQqVSLPf
+-					+Kgt3tDy4exMhYWtxA== )
++                        3600    DNSKEY  256 3 7 (
++                                        AwEAAecb2VFIc5Q2Hd43EUZg+73IPiUFH+gd
++                                        3duJlya0wwsjF6+Tji4vMSGt3QYYjMEg9Qz/
++                                        RLGVhWjh3HU2WXs71KArvVpX1f7bHZqbO7jz
++                                        EEbQzdjlLHr3OioHx2MPSDH7l4sBEoWuirzx
++                                        n9ggAf7O37815zsLpzNYyc28OjPo2Q2N
++                                        ) ; ZSK; alg = NSEC3RSASHA1; key id = 11435
++                        3600    DNSKEY  257 3 7 (
++                                        AwEAAaJscewp+Aw7IPyWe2uqHtOZSJDBLMza
++                                        EbmUULO3YSpECZtjrjbuCqYeesP8klVyt6jG
++                                        0zq4q1g4xWI/f33OZhX2irmwAGhjDuTsgrBC
++                                        X4wT+QCeZxuGlvRP2h5Sikey+D1Hb4CPSgAa
++                                        PwzrMLLocuPD9owXDMQ0AhSg1hYzQId4hraR
++                                        ejWfMyiwLUBXTEA6w7CxuIYTcrbxE8vi9X2v
++                                        PSytG0Mw0uNtFSARKC4biaDX9fM4U3ZPVUrc
++                                        OL0ExGoaDXwbGFJfOCA4SJCBDrF4aeNsxqFs
++                                        weUakmzSiGltqs4DrkCLS8GKP43E8n4JYNL+
++                                        Dzr1IvzQoR8cCgJRcYK3wjE=
++                                        ) ; KSK; alg = NSEC3RSASHA1; key id = 8493
++                        3600    RRSIG   DNSKEY 7 2 3600 (
++                                        20120722115314 20120622115314 8493 example.com.
++                                        iYBv46FAafn2QzO2SsUmxbYkOo2aWKx4hCbx
++                                        smbA/Wsfu+75SY9rxqLLhFQzvcXIpkNzpPbX
++                                        Flsqs85wDdzV+XgPnszRSFRnKH2Y4RXjBnzb
++                                        VxYTIPFUk5Yy4dRntKsZDzbJoUr/cBxdnEdL
++                                        ExduWV1mI88wK24ch576pj0tA4r2dkneAo0v
++                                        rwN8cLljY4MUt0RrbSXbibn/ifCAS69Cmulo
++                                        3qZTa5IX6Af+/hWPO390mbiDZYZ8oo6gHZV/
++                                        hA5wM+AC8mwiAgzMBzUJXGJa8hw1R/DBsGS7
++                                        ++4jpiL6SM0ZidmBfBnSZkVs/Tt/4rjmcqM0
++                                        49uQUlDOATLyVENoDQ== )
++                        3600    RRSIG   DNSKEY 7 2 3600 (
++                                        20120722115314 20120622115314 11435 example.com.
++                                        NxAPH5giReEi1CxzxfJoZmvRUuE3AxU9vF7Y
++                                        EL0dhDGrKfe8j3f5fkRm2i41ZujzWOAAUgmP
++                                        4M7K6NuVPEqZ3me7D7LzQsoUvk7PRFBuQz3c
++                                        HogLVAx2bT/a9Xx7J8r14Krlys+9TLkuoxKD
++                                        KXmtdOPUiZcpZruA9U7RIVszNdc= )
+ _foobar._tcp.example.com. 3600	IN SRV	0 1 9 old-slow-box.example.com.
+ 			3600	IN SRV	0 3 9 new-fast-box.example.com.
+ 			3600	IN SRV	1 0 9 server.example.com.

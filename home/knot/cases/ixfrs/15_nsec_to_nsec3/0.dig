@@ -1,0 +1,3 @@
++noadditional +noauthority example.com DNSKEY
++dnssec non-existing.b.example.com
++dnssec example.com PTR

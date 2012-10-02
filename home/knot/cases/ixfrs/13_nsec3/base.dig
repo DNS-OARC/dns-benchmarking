@@ -1,0 +1,1 @@
++dnssec -t A non-existing.example.com

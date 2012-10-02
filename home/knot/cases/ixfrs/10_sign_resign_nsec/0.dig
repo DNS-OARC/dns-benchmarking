@@ -1,0 +1,5 @@
++authority +dnssec +norec +tcp IN A ns.example.com
++noadditional +authority +dnssec +norec +tcp IN A wildcard.sub2.example.com
++authority +dnssec +norec +tcp IN A non.existent.dn.example.com
++authority +dnssec +norec +tcp IN SRV ns.example.com
++noadditional +authority +dnssec +norec +tcp IN SRV wildcardnotexist.sub2.example.com

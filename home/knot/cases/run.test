@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#export BASEDIR=$(mktemp -d /tmp/knot-test-XXXXXX)
+export BASEDIR=/tmp/knot-run-test
+export LOG=$BASEDIR/logfile
+export TESTLAB_DIR=$HOME
+export UTILS_DIR="$TESTLAB_DIR/utils"
+export CASES_DIR="$UTILS_DIR/cases"
+export CACHE_DIR="/var/cache/knot-tests"
+export PATH="$CASES_DIR:$UTILS_DIR:$PATH"
+export DIG_BIN=$(which dig)
+export OWNER=$(stat -c %U $0)
+
+# Check basedir
+if [ -d $BASEDIR ]; then
+	rm -rf $BASEDIR &>/dev/null
+fi
+mkdir -p $BASEDIR
+echo -n > $LOG
+
+# Copy sources
+echo "Base directory: $BASEDIR"
+#echo "Preparing Knot sources..."
+#cp -rf $TESTLAB_DIR/knot-src $BASEDIR/knot &>/dev/null
+
+_progress() {
+	echo "$*"
+}
+
+export -f _progress
+
+cd $BASEDIR
+tcase=$1
+shift 1
+exec $tcase $*

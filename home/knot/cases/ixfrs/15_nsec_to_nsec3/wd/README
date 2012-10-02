@@ -1,0 +1,5 @@
+0. NSEC signed zone
+1. planted DNSKEY from NSEC3-signed zone
+2. add all NSEC3+RRSIG records to zone, no NSEC3PARAM
+3. added NSEC3PARAM+RRSIG
+4. removed all NSECs

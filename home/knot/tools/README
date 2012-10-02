@@ -1,0 +1,39 @@
+Tools for benchmarking & compliance testing.
+
+zone-generate.py -h
+ * tool for artificial zone generation including most known RR types
+ * consult -h for help
+
+zone-typelist.sh <origin> <zonefile>
+ * briefly parses through zone and build zone dictionary
+ * that is selected pairs of TYPE record_name
+ * dictionary is used for zone-pcapgen.py to generate testing pcap file
+
+zone-pcapgen.py
+ * creates compliance testing pcap file from given zone dictionary
+ * see -h for help
+
+zone-pcapgen-bench.py
+ * creates a trace file for benchmarking, requires .dict file from zone-typelist.sh
+ * there is no builtin way to introduce queries to nonexistent names, you may extend the result file
+
+pcat-analyze.py
+ * analyze two outputs from pcat tool for differences (pcat in: http://www.nlnetlabs.nl/svn/ldns/trunk )
+ * differences are analyzed in a semantic way, no templates are needed
+ * only a few RR dissectors are in place, will be developed further
+ * case of domain names and RR rotation is ignored
+ * see -h for help
+
+digcmp.py
+ * parses "dig" output into a normalized form for later comparison
+
+dns-tcp2udp.py
+ * DNS TCP -> UDP tunneling
+
+pcap-fuzz.py
+ * introduce random errors into DNS packets in a pcap file
+
+pcat2pcap.sh
+ * transform the "pcat" tool result into a pcap file
+
+Disclaimer: tools may contain some rough edges.

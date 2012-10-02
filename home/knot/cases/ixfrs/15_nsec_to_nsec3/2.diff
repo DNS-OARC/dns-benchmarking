@@ -1,0 +1,26 @@
+--- example.com.zone.2	2012-06-22 15:38:21.282731791 +0200
++++ example.com.zone.3	2012-06-22 15:38:27.338731732 +0200
+@@ -1,7 +1,7 @@
+ ; File written on Fri Jun 22 14:53:05 2012
+ ; dnssec_signzone version 9.9.0
+ example.com.		3600	IN SOA	ns.example.com. username.example.com. (
+-					2007120715 ; serial
++					2007120716 ; serial
+ 					10         ; refresh (10 seconds)
+ 					30         ; retry (30 seconds)
+ 					2419200    ; expire (4 weeks)
+@@ -89,6 +89,14 @@
+                                         4M7K6NuVPEqZ3me7D7LzQsoUvk7PRFBuQz3c
+                                         HogLVAx2bT/a9Xx7J8r14Krlys+9TLkuoxKD
+                                         KXmtdOPUiZcpZruA9U7RIVszNdc= )
++                        0       NSEC3PARAM 1 0 10 DEADBEEF
++                        0       RRSIG   NSEC3PARAM 7 2 0 (
++                                        20120722115314 20120622115314 11435 example.com.
++                                        4rJdFTxYkyjx/B4lLoOTOQfOqk93bOdmQHGI
++                                        0RsDzVYwPeVekChFsVEfNNWos04xAyn1bVYH
++                                        0Z4ILrGfzqBMH3v8IrEpcsbzNXzrL4xLfOaR
++                                        zLbDJsp3QKIhrQjTOYdjFwk6C2xLcNyW4Xrl
++                                        k+uekH8uXbHX/RSnMmaswXbpE2Q= )
+ _foobar._tcp.example.com. 3600	IN SRV	0 1 9 old-slow-box.example.com.
+ 			3600	IN SRV	0 3 9 new-fast-box.example.com.
+ 			3600	IN SRV	1 0 9 server.example.com.

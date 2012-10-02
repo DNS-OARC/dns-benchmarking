@@ -1,0 +1,18 @@
+--- example.com.zone.3	2012-02-22 20:10:14.213509151 +0100
++++ example.com.zone.4	2012-07-18 19:37:34.916072654 +0200
+@@ -1,7 +1,7 @@
+ $TTL 1h                  ; The default expiration time of a resource record without its own TTL value
+ $ORIGIN example.com.
+ @  IN  SOA  ns.example.com. username.example.com. (
+-              2007120716 ; serial number of this zone file
++              2007120717 ; serial number of this zone file
+               10         ; slave refresh (1 day)
+               30         ; slave retry time in case of a problem (1 day)
+               4w         ; slave expiration time (4 weeks)
+@@ -68,3 +68,6 @@
+ o	CNAME	a.e.example.com.
+ p	CNAME	a.sub.example.com.
+ r	CNAME	a.l.example.com.
++change-ttl-test 3500 A 1.4.2.3
++change-ttl-test 3500 A 4.3.5.2 
++change-ttl-test 3500 NS ns.somewhere.else. 

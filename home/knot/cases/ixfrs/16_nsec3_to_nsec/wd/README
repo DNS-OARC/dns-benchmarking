@@ -1,0 +1,5 @@
+0. NSEC3 signed zone
+1. add NSEC + their RRSIG records
+2. remove NSEC3PARAM + RRSIG
+3. remove all NSEC3 records
+4. switch DNSKEY to the new one
